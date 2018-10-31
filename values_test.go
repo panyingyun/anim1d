@@ -5,33 +5,8 @@
 package anim1d
 
 import (
-	"reflect"
 	"testing"
 )
-
-func TestMinMax(t *testing.T) {
-	if MinMax(2, 0, 3) != 2 {
-		t.Fail()
-	}
-	if MinMax(-2, 0, 3) != 0 {
-		t.Fail()
-	}
-	if MinMax(4, 0, 3) != 3 {
-		t.Fail()
-	}
-}
-
-func TestMinMax32(t *testing.T) {
-	if MinMax32(2, 0, 3) != 2 {
-		t.Fail()
-	}
-	if MinMax32(-2, 0, 3) != 0 {
-		t.Fail()
-	}
-	if MinMax32(4, 0, 3) != 3 {
-		t.Fail()
-	}
-}
 
 // Values
 
@@ -107,6 +82,26 @@ func TestRand(t *testing.T) {
 
 // Scalers
 
+func TestBell_Scale(t *testing.T) {
+	half := uint16(65535 >> 1)
+	data := []struct {
+		i        uint16
+		expected uint16
+	}{
+		{0, 0},
+		{0x1000, 2093},
+		{half, 0xffff},
+		{0xefff, 2093},
+		{0xffff, 0},
+	}
+	b := Bell{}
+	for i, line := range data {
+		if v := b.Scale(line.i); v != line.expected {
+			t.Fatalf("%d: Bell.Scale(%v) = %v, expected %v", i, line.i, v, line.expected)
+		}
+	}
+}
+
 func TestCurve_limits(t *testing.T) {
 	for _, v := range []Curve{Curve(""), Ease, EaseIn, EaseInOut, EaseOut, Direct} {
 		if s := v.Scale(0); s != 0 {
@@ -118,7 +113,7 @@ func TestCurve_limits(t *testing.T) {
 	}
 }
 
-func TestCurve_values(t *testing.T) {
+func TestCurve_Scale(t *testing.T) {
 	half := uint16(65535 >> 1)
 	data := []struct {
 		t        Curve
@@ -130,70 +125,27 @@ func TestCurve_values(t *testing.T) {
 		{EaseInOut, half, 0x7ffe},
 		{EaseOut, half, 0xaf1d},
 		{Curve(""), half, 0xaf1d},
+		{Curve("bleh"), half, 0xaf1d},
 		{Direct, half, half},
+		{StepStart, 0, 0},
+		{StepStart, 255, 0},
+		{StepStart, 256, 0xffff},
+		{StepStart, 0xffff, 0xffff},
+		{StepMiddle, 0, 0},
+		{StepMiddle, 0x7fff, 0},
+		{StepMiddle, 0x8000, 0xffff},
+		{StepMiddle, 0xffff, 0xffff},
+		{StepEnd, 0, 0},
+		{StepEnd, 0xfefe, 0},
+		{StepEnd, 0xfeff, 0xffff},
+		{StepEnd, 0xffff, 0xffff},
 	}
 	for i, line := range data {
 		if v := line.t.Scale(line.i); v != line.expected {
 			t.Fatalf("%d: %v.Scale(%v) = %v, expected %v", i, line.t, line.i, v, line.expected)
 		}
-	}
-}
-
-func TestInterpolationEmpty(t *testing.T) {
-	b := make(Frame, 1)
-	for _, v := range []Interpolation{Interpolation(""), NearestSkip, Nearest, Linear} {
-		v.Scale(nil, nil)
-		v.Scale(nil, b)
-		v.Scale(b, nil)
-	}
-}
-
-func TestInterpolation(t *testing.T) {
-	red := Color{0xFF, 0x00, 0x00}
-	green := Color{0x00, 0xFF, 0x00}
-	blue := Color{0x00, 0x00, 0xFF}
-	yellow := Color{0xFF, 0xFF, 0x00}
-	cyan := Color{0x00, 0xFF, 0xFF}
-	magenta := Color{0xFF, 0x00, 0xFF}
-	white := Color{0xFF, 0xFF, 0xFF}
-	black := Color{}
-	input := Frame{red, green, blue, yellow, cyan, magenta, white}
-	data := []struct {
-		s        Interpolation
-		input    Frame
-		expected Frame
-	}{
-		{
-			NearestSkip,
-			input,
-			Frame{red, black, green, black, blue, black, yellow, black, cyan, black, magenta, black, white},
-		},
-		{NearestSkip, input, Frame{yellow}},
-		{NearestSkip, input, Frame{green, magenta}},
-		{NearestSkip, input, Frame{green, yellow, magenta}},
-		{
-			Nearest,
-			input,
-			Frame{red, red, green, green, blue, blue, yellow, yellow, cyan, cyan, magenta, magenta, white, white},
-		},
-		{Nearest, input, Frame{yellow}},
-		{Nearest, input, Frame{green, magenta}},
-		{Nearest, input, Frame{green, yellow, magenta}},
-		// TODO(maruel): This is broken.
-		/*{
-			Linear,
-			input,
-			Frame{red, red, green, green, blue, blue, yellow, yellow, cyan, cyan, magenta, magenta, white, white},
-		},*/
-		{Linear, input, Frame{Color{0x80, 0xFF, 0x7F}}},
-		{Linear, input, Frame{Color{0x00, 0x80, 0x7F}, Color{0xFF, 0x7F, 0xFF}}},
-		{Linear, input, Frame{Color{0x0, 0x80, 0x7F}, Color{0x80, 0xFF, 0x7F}, Color{0xFF, 0x7F, 0xFF}}},
-	}
-	for i, line := range data {
-		out := make(Frame, len(line.expected))
-		line.s.Scale(line.input, out)
-		if !reflect.DeepEqual(out, line.expected) {
-			t.Fatalf("%d: %v != %v", i, out, line.expected)
+		if v := line.t.Scale8(line.i); v != uint8(line.expected>>8) {
+			t.Fatalf("%d: %v.Scale8(%v) = %v, expected %v", i, line.t, line.i, v, line.expected>>8)
 		}
 	}
 }
@@ -227,6 +179,7 @@ func TestMovePerHour(t *testing.T) {
 		{3600000, 2, 10, 2},
 		{2 * 3600000, 1, 10, 1},
 		{2 * 3600000, 2, 10, 2},
+		{2 * 3600000, 2, 0, 2},
 	}
 	for i, line := range data {
 		m := MovePerHour{Const(line.mps)}
